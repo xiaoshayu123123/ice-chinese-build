@@ -1,0 +1,66 @@
+name: Build Chinese Ice
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - name: Download Chinese Ice source
+        uses: actions/checkout@v4
+        with:
+          repository: jordanbaird/Ice
+          ref: eb4d2e1a1618d398a9900c6707de1691b6cef257
+          path: source
+
+      - name: Verify Chinese localization
+        run: |
+          grep -q '"zh-Hans"' source/Ice/Localizable.xcstrings
+
+      - name: Build Ice
+        run: |
+          xcodebuild \
+            -project source/Ice.xcodeproj \
+            -scheme Ice \
+            -configuration Release \
+            -destination "generic/platform=macOS" \
+            -derivedDataPath "$RUNNER_TEMP/IceBuild" \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Sign and package Ice
+        run: |
+          APP="$RUNNER_TEMP/IceBuild/Build/Products/Release/Ice.app"
+
+          test -d "$APP"
+
+          codesign \
+            --force \
+            --deep \
+            --sign - \
+            --entitlements source/Ice/Ice.entitlements \
+            "$APP"
+
+          codesign --verify --deep --strict "$APP"
+
+          ditto \
+            -c \
+            -k \
+            --sequesterRsrc \
+            --keepParent \
+            "$APP" \
+            Ice-Chinese.zip
+
+      - name: Upload Chinese Ice
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ice-Chinese
+          path: Ice-Chinese.zip
+          retention-days: 7
